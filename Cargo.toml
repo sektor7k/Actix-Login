@@ -1,0 +1,18 @@
+[package]
+name = "actixWeb"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-web = "4.3.1"
+dotenv = "0.15"
+env_logger = "0.9"
+log = "0.4"
+tera = "1.18.1"
+actix-files = "*"
+serde = {version = "1.0.162" , features = ["derive"]}
+
+actix-redis = "0.12.0"
+actix-session = {features = ["cookie-session"] }
