@@ -1,102 +1,142 @@
-use actix_files::Files;
-use actix_web::{get, web, App, Error, HttpResponse, HttpServer, Responder, Result, middleware::Logger, error, http, cookie::{Key, self}};
+use actix_session::Session;
+use actix_web::{error, http, web, Error, HttpResponse, Result};
+use bcrypt::DEFAULT_COST;
 use serde::*;
-use tera::{Tera,Context};
-use dotenv::dotenv;
-use actix_session::{
-    config::PersistentSession, storage::CookieSessionStore, Session, SessionMiddleware,
-};
+use sqlx::SqlitePool;
+use tera::{Context, Tera};
+use validator::Validate;
 
-#[derive(Debug, Deserialize)]
-pub struct LoginUser{
+#[derive(Debug, Deserialize, Validate)]
+pub struct LoginUser {
+    #[validate(email)]
     email: String,
-    password: String
+    password: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct SigninUser{
+#[derive(Debug, Deserialize, Validate)]
+pub struct SigninUser {
+    #[validate(email)]
+    email: String,
+    #[validate(length(min = 4))]
+    username: String,
+    #[validate(must_match = "password2",length(min = 5))]
+    password: String,
+    password2: String,
+}
+
+
+#[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
+pub struct User {
+    id:i32,
     email: String,
     username: String,
     password: String,
-    password2: String
+    
 }
 
-
-
-pub async fn index(tmpl:web::Data<Tera> , session: Session) -> Result<HttpResponse,Error> {
-
+pub async fn index(tmpl: web::Data<Tera>, session: Session) -> Result<HttpResponse, Error> {
     let mut ctx = Context::new();
 
-    if let Some(user) = session.get::<String>("user")?{
-      ctx.insert("user", &user)  
+    if let Some(user) = session.get::<String>("user")? {
+        ctx.insert("user", &user)
     }
-    
-    let a = tmpl.render("index.html", &ctx)
-    .map_err(error::ErrorInternalServerError)?;
+
+    let a = tmpl
+        .render("index.html", &ctx)
+        .map_err(error::ErrorInternalServerError)?;
     Ok(HttpResponse::Ok().body(a))
 }
 
-
-
-pub async fn login(tmpl:web::Data<Tera> ,session:Session) -> Result<HttpResponse,Error> {
-      
-    if let Some(user) = session.get::<String>("user")?{
+pub async fn login(tmpl: web::Data<Tera>, session: Session) -> Result<HttpResponse, Error> {
+    if let Some(user) = session.get::<String>("user")? {
         return Ok(redirct("/"));
     }
-    let mut ctx = Context::new();
-    let a = tmpl.render("login.html", &ctx)
-    .map_err(error::ErrorInternalServerError)?;
+    let ctx = Context::new();
+    let a = tmpl
+        .render("login.html", &ctx)
+        .map_err(error::ErrorInternalServerError)?;
     Ok(HttpResponse::Ok().body(a))
 }
 
+pub async fn post_login(
+    _tmpl: web::Data<Tera>,
+    form: web::Form<LoginUser>,
+    session: Session,
+    conn: web::Data<SqlitePool>
+) -> Result<HttpResponse, Error> {
+    //let ctx = Context::new();
 
+    let login_form = form.into_inner();
 
-pub async fn post_login(tmpl:web::Data<Tera>, form: web::Form<LoginUser>, session: Session) -> Result<HttpResponse,Error> {
-    let ctx = Context::new();
-    
-    session.insert("user", &form.email)?;
-
-    let a = tmpl.render("login.html", &ctx)
-    .map_err(error::ErrorInternalServerError)?;
-    Ok(redirct("/"))
+    if let Ok(_) = login_form.validate(){
+        let user:User =
+            sqlx::query_as("select * from users where email = $1")
+                .bind(&login_form.email)
+               .fetch_one(&**conn).await.expect("sifreleme hatali");
+        if let Ok(_) = bcrypt::verify(&login_form.password, &user.password){
+            session.insert("user", &login_form.email)?;
+        return Ok(redirct("/"));
+        }
+        return Ok(redirct("/login"))
         
+    }
+
+    // let a = tmpl
+    //     .render("login.html", &ctx)
+    //     .map_err(error::ErrorInternalServerError)?;
+    Ok(redirct("/login"))
 }
 
-
-pub async fn logout(session:Session) -> Result<HttpResponse,Error> {
-    
+pub async fn logout(session: Session) -> Result<HttpResponse, Error> {
     session.purge();
-    
+
     return Ok(redirct("/"));
 }
 
-pub fn redirct(location:&str)-> HttpResponse{
+pub fn redirct(location: &str) -> HttpResponse {
     HttpResponse::Found()
         .append_header((http::header::LOCATION, location))
         .finish()
 }
 
-pub async fn signin(tmpl:web::Data<Tera> ,session:Session) -> Result<HttpResponse,Error> {
-      
-    if let Some(user) = session.get::<String>("user")?{
+pub async fn signin(tmpl: web::Data<Tera>, session: Session) -> Result<HttpResponse, Error> {
+    if let Some(user) = session.get::<String>("user")? {
         return Ok(redirct("/"));
     }
-    let mut ctx = Context::new();
-    let a = tmpl.render("signin.html", &ctx)
-    .map_err(error::ErrorInternalServerError)?;
+    let ctx = Context::new();
+    let a = tmpl
+        .render("signin.html", &ctx)
+        .map_err(error::ErrorInternalServerError)?;
     Ok(HttpResponse::Ok().body(a))
 }
 
+pub async fn post_signin(
+    _tmpl: web::Data<Tera>,
+    form2: web::Form<SigninUser>,
+    session: Session,
+    conn: web::Data<SqlitePool>,
+) -> Result<HttpResponse, Error> {
+    //let ctx = Context::new();
 
+    let user = form2.into_inner();
+    if let Ok(_) = user.validate() {
+        let add_user =
+            sqlx::query("insert into users (username, email, password) values($1, $2, $3)")
+                .bind(&user.username)
+                .bind(&user.email)
+                .bind(&bcrypt::hash(&user.password, DEFAULT_COST).expect("şifreleme hatalı"))
+                .execute(&**conn)
+                .await;
 
-pub async fn post_signin(tmpl:web::Data<Tera>, form2: web::Form<SigninUser>, session: Session) -> Result<HttpResponse,Error> {
-    let ctx = Context::new();
-    
-    session.insert("user", &form2.email)?;
-    println!("{:?}",*form2);
-
-    let a = tmpl.render("login.html", &ctx)
-    .map_err(error::ErrorInternalServerError)?;
-    Ok(redirct("/"))
-        
+        match add_user {
+            Ok(_) => {
+                session.insert("user", &user.username)?;
+                return Ok(redirct("/"));
+            }
+            Err(_) => {
+                return Ok(redirct("/signin"));
+            }
+        };
+    }
+    return Ok(redirct("/signin"));
 }

@@ -16,3 +16,7 @@ serde = {version = "1.0.162" , features = ["derive"]}
 
 actix-redis = "0.12.0"
 actix-session = {features = ["cookie-session"] }
+sqlx = { version = "0.6.3", features = ["runtime-actix-rustls", "sqlite"]}
+anyhow = "1.0.71"
+validator = {version = "0.16.0" , features = ["derive"]}
+bcrypt = "0.14.0"
