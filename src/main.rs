@@ -37,6 +37,7 @@ async fn main() -> std::io::Result<()> {
         .service(web::resource("/login")
                 .route(web::get().to(login))
                 .route(web::post().to(post_login)))
+        .service(web::resource("signin").route(web::get().to(signin)))
         .service(web::resource("logout").route(web::get().to(logout)))
         .service(Files::new("/static", "static").show_files_listing())
         

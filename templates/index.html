@@ -29,7 +29,22 @@
 				Login
 			</button>
 			{% endif %}
+
+			{% if user %}
+			<button onclick="location.href='logout'" >
+				
+				{{user}}
+				
+			</button>
+			{% else %}
+			<button onclick="location.href='signin'" >
+				
+				Signin
+			</button>
+			{% endif %}
+
 		</div>
+		
 	</header>
 	<main>
 		<h1>Welcome to our Website!</h1>

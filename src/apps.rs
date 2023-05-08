@@ -13,6 +13,15 @@ pub struct LoginUser{
     password: String
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SigninUser{
+    email: String,
+    username: String,
+    password: String,
+    password2: String
+}
+
+
 
 pub async fn index(tmpl:web::Data<Tera> , session: Session) -> Result<HttpResponse,Error> {
 
@@ -30,8 +39,7 @@ pub async fn index(tmpl:web::Data<Tera> , session: Session) -> Result<HttpRespon
 
 
 pub async fn login(tmpl:web::Data<Tera> ,session:Session) -> Result<HttpResponse,Error> {
-    
-    
+      
     if let Some(user) = session.get::<String>("user")?{
         return Ok(redirct("/"));
     }
@@ -40,12 +48,7 @@ pub async fn login(tmpl:web::Data<Tera> ,session:Session) -> Result<HttpResponse
     .map_err(error::ErrorInternalServerError)?;
     Ok(HttpResponse::Ok().body(a))
 }
-pub async fn logout(session:Session) -> Result<HttpResponse,Error> {
-    
-    session.purge();
-    
-    return Ok(redirct("/"));
-}
+
 
 
 pub async fn post_login(tmpl:web::Data<Tera>, form: web::Form<LoginUser>, session: Session) -> Result<HttpResponse,Error> {
@@ -59,8 +62,41 @@ pub async fn post_login(tmpl:web::Data<Tera>, form: web::Form<LoginUser>, sessio
         
 }
 
+
+pub async fn logout(session:Session) -> Result<HttpResponse,Error> {
+    
+    session.purge();
+    
+    return Ok(redirct("/"));
+}
+
 pub fn redirct(location:&str)-> HttpResponse{
     HttpResponse::Found()
         .append_header((http::header::LOCATION, location))
         .finish()
+}
+
+pub async fn signin(tmpl:web::Data<Tera> ,session:Session) -> Result<HttpResponse,Error> {
+      
+    if let Some(user) = session.get::<String>("user")?{
+        return Ok(redirct("/"));
+    }
+    let mut ctx = Context::new();
+    let a = tmpl.render("signin.html", &ctx)
+    .map_err(error::ErrorInternalServerError)?;
+    Ok(HttpResponse::Ok().body(a))
+}
+
+
+
+pub async fn post_signin(tmpl:web::Data<Tera>, form2: web::Form<SigninUser>, session: Session) -> Result<HttpResponse,Error> {
+    let ctx = Context::new();
+    
+    session.insert("user", &form2.email)?;
+    println!("{:?}",*form2);
+
+    let a = tmpl.render("login.html", &ctx)
+    .map_err(error::ErrorInternalServerError)?;
+    Ok(redirct("/"))
+        
 }
