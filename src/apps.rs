@@ -2,11 +2,11 @@ use actix_session::Session;
 use actix_web::{error, http, web, Error, HttpResponse, Result};
 use bcrypt::DEFAULT_COST;
 use serde::*;
-use sqlx::SqlitePool;
+use sqlx::{SqlitePool};
 use tera::{Context, Tera};
 use validator::Validate;
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, sqlx::FromRow)]
 pub struct LoginUser {
     #[validate(email)]
     email: String,
@@ -19,19 +19,17 @@ pub struct SigninUser {
     email: String,
     #[validate(length(min = 4))]
     username: String,
-    #[validate(must_match = "password2",length(min = 5))]
+    #[validate(must_match = "password2", length(min = 5))]
     password: String,
     password2: String,
 }
 
-
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct User {
-    id:i32,
+    id: i32,
     email: String,
     username: String,
     password: String,
-    
 }
 
 pub async fn index(tmpl: web::Data<Tera>, session: Session) -> Result<HttpResponse, Error> {
@@ -62,29 +60,35 @@ pub async fn post_login(
     _tmpl: web::Data<Tera>,
     form: web::Form<LoginUser>,
     session: Session,
-    conn: web::Data<SqlitePool>
+    conn: web::Data<SqlitePool>,
 ) -> Result<HttpResponse, Error> {
     //let ctx = Context::new();
 
     let login_form = form.into_inner();
 
     if let Ok(_) = login_form.validate(){
-        let user:User =
-            sqlx::query_as("select * from users where email = $1")
-                .bind(&login_form.email)
-               .fetch_one(&**conn).await.expect("sifreleme hatali");
-        if let Ok(_) = bcrypt::verify(&login_form.password, &user.password){
-            session.insert("user", &login_form.email)?;
-        return Ok(redirct("/"));
+        let result:Result<User, sqlx::Error> = sqlx::query_as("select * from users where email = $1")
+        .bind(&login_form.email)
+        .fetch_one(&**conn)
+        .await;
+        match result {
+            Ok(user) => {
+                if bcrypt::verify(&login_form.password, &user.password).unwrap() {
+                    session.insert("user", &login_form.email)?;
+                    return Ok(redirct("/"));
+                }
+                return Ok(redirct("/login"))
+            },
+            Err(e) => {
+                return Err(return Ok(redirct("/login"))); // Uygun hata türüyle değiştirin
+            }
         }
-        return Ok(redirct("/login"))
-        
     }
+    return Ok(redirct("/login"));
 
     // let a = tmpl
     //     .render("login.html", &ctx)
     //     .map_err(error::ErrorInternalServerError)?;
-    Ok(redirct("/login"))
 }
 
 pub async fn logout(session: Session) -> Result<HttpResponse, Error> {
